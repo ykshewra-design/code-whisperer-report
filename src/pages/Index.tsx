@@ -70,13 +70,18 @@ const Index = () => {
     }
   }, [isMatched, matchResult]);
 
-  // Handle peer disconnect
+  // Handle peer disconnect - go back to finding screen
   useEffect(() => {
     if (peerDisconnected && appState === "connected") {
-      toast.info("The other person left the chat");
-      handleEnd();
+      toast.info("Peer left the chat");
+      // Return to finding screen to search for new match
+      stopMedia();
+      setAppState("finding");
+      if (selectedMode) {
+        startSearching(selectedMode);
+      }
     }
-  }, [peerDisconnected, appState]);
+  }, [peerDisconnected, appState, selectedMode]);
 
   // Handle match error
   useEffect(() => {

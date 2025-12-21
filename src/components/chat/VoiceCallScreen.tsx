@@ -1,43 +1,96 @@
-import { useState, useEffect } from "react";
-import { Mic, MicOff, PhoneOff, SkipForward, User, Volume2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Mic, MicOff, PhoneOff, User, Volume2, VolumeX } from "lucide-react";
 import AnimatedBackground from "@/components/ui/AnimatedBackground";
 import GlassPanel from "@/components/ui/GlassPanel";
 import { cn } from "@/lib/utils";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import { useCallTimer } from "@/hooks/useCallTimer";
 
 interface VoiceCallScreenProps {
-  onSkip: () => void;
   onEnd: () => void;
+  localStream: MediaStream | null;
+  roomId: string | null;
+  myUserId: string | null;
+  peerId: string | null;
+  isInitiator: boolean;
 }
 
-const VoiceCallScreen = ({ onSkip, onEnd }: VoiceCallScreenProps) => {
+const VoiceCallScreen = ({ 
+  onEnd, 
+  localStream, 
+  roomId, 
+  myUserId, 
+  peerId, 
+  isInitiator 
+}: VoiceCallScreenProps) => {
   const [isMuted, setIsMuted] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  
+  const audioRef = useRef<HTMLAudioElement>(null);
+  
+  const { remoteStream, isConnected, connectionState } = useWebRTC({
+    roomId,
+    myUserId,
+    peerId,
+    isInitiator,
+    localStream,
+  });
+  
+  const { formattedTime, isRunning, start, stop } = useCallTimer();
 
-  // Call timer
+  // Start timer when connected
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCallDuration((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    if (isConnected && !isRunning) {
+      start();
+    }
+    return () => {
+      if (isRunning) stop();
+    };
+  }, [isConnected, isRunning, start, stop]);
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  // Set remote audio
+  useEffect(() => {
+    if (audioRef.current && remoteStream) {
+      audioRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
+  // Toggle mute
+  const toggleMute = () => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = isMuted;
+      });
+      setIsMuted(!isMuted);
+    }
+  };
+
+  // Toggle speaker
+  const toggleSpeaker = () => {
+    if (audioRef.current) {
+      audioRef.current.muted = isSpeakerOn;
+      setIsSpeakerOn(!isSpeakerOn);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-background flex flex-col items-center justify-center p-4">
       <AnimatedBackground />
 
+      {/* Hidden audio element for remote stream */}
+      <audio ref={audioRef} autoPlay />
+
       {/* Phone-style UI */}
       <div className="flex-1 flex flex-col items-center justify-center space-y-8 animate-fade-in">
         {/* Avatar with audio visualizer effect */}
         <div className="relative">
           {/* Pulsing ring to simulate audio */}
-          <div className="absolute inset-0 rounded-full bg-primary/20 animate-pulse scale-125" />
-          <div className="absolute inset-0 rounded-full bg-primary/10 animate-pulse scale-150" style={{ animationDelay: "0.3s" }} />
+          {isConnected && (
+            <>
+              <div className="absolute inset-0 rounded-full bg-primary/20 animate-pulse scale-125" />
+              <div className="absolute inset-0 rounded-full bg-primary/10 animate-pulse scale-150" style={{ animationDelay: "0.3s" }} />
+            </>
+          )}
           
           <GlassPanel
             variant="strong"
@@ -51,14 +104,20 @@ const VoiceCallScreen = ({ onSkip, onEnd }: VoiceCallScreenProps) => {
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-semibold text-foreground">Stranger</h2>
           <div className="flex items-center justify-center gap-2 text-success">
-            <Volume2 className="w-4 h-4" />
-            <span className="text-sm">Connected</span>
+            {isConnected ? (
+              <>
+                <Volume2 className="w-4 h-4" />
+                <span className="text-sm">Connected</span>
+              </>
+            ) : (
+              <span className="text-sm text-muted-foreground">{connectionState || "Connecting..."}</span>
+            )}
           </div>
         </div>
 
         {/* Call duration */}
         <div className="text-4xl font-light text-foreground tracking-wider">
-          {formatTime(callDuration)}
+          {isConnected ? formattedTime : "--:--"}
         </div>
       </div>
 
@@ -67,7 +126,7 @@ const VoiceCallScreen = ({ onSkip, onEnd }: VoiceCallScreenProps) => {
         <div className="glass-strong px-8 py-5 rounded-full flex items-center gap-6">
           {/* Mute */}
           <button
-            onClick={() => setIsMuted(!isMuted)}
+            onClick={toggleMute}
             className={cn(
               "w-16 h-16 rounded-full flex items-center justify-center transition-all",
               isMuted
@@ -78,12 +137,17 @@ const VoiceCallScreen = ({ onSkip, onEnd }: VoiceCallScreenProps) => {
             {isMuted ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
           </button>
 
-          {/* Skip */}
+          {/* Speaker toggle */}
           <button
-            onClick={onSkip}
-            className="w-16 h-16 rounded-full bg-accent hover:bg-accent/80 text-accent-foreground flex items-center justify-center transition-all"
+            onClick={toggleSpeaker}
+            className={cn(
+              "w-16 h-16 rounded-full flex items-center justify-center transition-all",
+              !isSpeakerOn
+                ? "bg-warning text-warning-foreground"
+                : "bg-secondary hover:bg-secondary/80 text-foreground"
+            )}
           >
-            <SkipForward className="w-7 h-7" />
+            {isSpeakerOn ? <Volume2 className="w-7 h-7" /> : <VolumeX className="w-7 h-7" />}
           </button>
 
           {/* End call */}

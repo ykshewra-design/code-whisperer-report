@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AnimatedBackground from "@/components/ui/AnimatedBackground";
 import GlassPanel from "@/components/ui/GlassPanel";
 import Header from "@/components/Header";
@@ -7,63 +7,169 @@ import FindingScreen from "@/components/FindingScreen";
 import VideoCallScreen from "@/components/chat/VideoCallScreen";
 import VoiceCallScreen from "@/components/chat/VoiceCallScreen";
 import TextChatScreen from "@/components/chat/TextChatScreen";
+import { useMatching } from "@/hooks/useMatching";
+import { useMediaDevices } from "@/hooks/useMediaDevices";
+import { toast } from "sonner";
 
 type AppState = "landing" | "finding" | "connected";
 
 const Index = () => {
   const [appState, setAppState] = useState<AppState>("landing");
   const [selectedMode, setSelectedMode] = useState<ChatMode | null>(null);
+  
+  const { 
+    isSearching, 
+    isMatched, 
+    matchResult, 
+    error: matchError,
+    startSearching, 
+    stopSearching,
+    peerDisconnected 
+  } = useMatching();
+  
+  const { 
+    localStream, 
+    requestMedia, 
+    stopMedia,
+    error: mediaError 
+  } = useMediaDevices();
 
-  const handleSelectMode = (mode: ChatMode) => {
+  // Handle mode selection
+  const handleSelectMode = async (mode: ChatMode) => {
     setSelectedMode(mode);
     setAppState("finding");
     
-    // Simulate finding a partner (will be replaced with real signaling)
-    setTimeout(() => {
-      setAppState("connected");
-    }, 3000);
+    // Request media for video/voice modes
+    if (mode === "video") {
+      const success = await requestMedia({ video: true, audio: true });
+      if (!success) {
+        toast.error("Camera and microphone access required for video chat");
+        setAppState("landing");
+        setSelectedMode(null);
+        return;
+      }
+    } else if (mode === "voice") {
+      const success = await requestMedia({ video: false, audio: true });
+      if (!success) {
+        toast.error("Microphone access required for voice chat");
+        setAppState("landing");
+        setSelectedMode(null);
+        return;
+      }
+    }
+    
+    // Start searching for a real match
+    await startSearching(mode);
   };
 
-  const handleSkip = () => {
-    // Go back to finding state to search for new partner
-    setAppState("finding");
-    setTimeout(() => {
+  // Handle match found
+  useEffect(() => {
+    if (isMatched && matchResult) {
+      console.log("Match found!", matchResult);
       setAppState("connected");
-    }, 2000);
-  };
+    }
+  }, [isMatched, matchResult]);
 
-  const handleEnd = () => {
+  // Handle peer disconnect
+  useEffect(() => {
+    if (peerDisconnected && appState === "connected") {
+      toast.info("The other person left the chat");
+      handleEnd();
+    }
+  }, [peerDisconnected, appState]);
+
+  // Handle match error
+  useEffect(() => {
+    if (matchError) {
+      toast.error(matchError);
+    }
+  }, [matchError]);
+
+  // Handle media error
+  useEffect(() => {
+    if (mediaError) {
+      toast.error(mediaError);
+    }
+  }, [mediaError]);
+
+  const handleEnd = async () => {
+    await stopSearching();
+    stopMedia();
     setAppState("landing");
     setSelectedMode(null);
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
+    await stopSearching();
+    stopMedia();
     setAppState("landing");
     setSelectedMode(null);
   };
+
+  // Handle upgrade from text to voice/video
+  const handleUpgradeToVoice = async () => {
+    const success = await requestMedia({ video: false, audio: true });
+    if (success) {
+      setSelectedMode("voice");
+    } else {
+      toast.error("Microphone access required");
+    }
+  };
+
+  const handleUpgradeToVideo = async () => {
+    const success = await requestMedia({ video: true, audio: true });
+    if (success) {
+      setSelectedMode("video");
+    } else {
+      toast.error("Camera and microphone access required");
+    }
+  };
+
+  // Determine if I'm the initiator (for WebRTC offer/answer)
+  const isInitiator = matchResult ? matchResult.myId > (matchResult.peerId || '') : false;
 
   // Render active chat screen based on mode
-  if (appState === "connected" && selectedMode) {
+  if (appState === "connected" && selectedMode && matchResult) {
     switch (selectedMode) {
       case "video":
-        return <VideoCallScreen onSkip={handleSkip} onEnd={handleEnd} />;
+        return (
+          <VideoCallScreen 
+            onEnd={handleEnd}
+            localStream={localStream}
+            roomId={matchResult.roomId}
+            myUserId={matchResult.myId}
+            peerId={matchResult.peerId}
+            isInitiator={isInitiator}
+          />
+        );
       case "voice":
-        return <VoiceCallScreen onSkip={handleSkip} onEnd={handleEnd} />;
+        return (
+          <VoiceCallScreen 
+            onEnd={handleEnd}
+            localStream={localStream}
+            roomId={matchResult.roomId}
+            myUserId={matchResult.myId}
+            peerId={matchResult.peerId}
+            isInitiator={isInitiator}
+          />
+        );
       case "text":
         return (
           <TextChatScreen 
-            onSkip={handleSkip} 
             onEnd={handleEnd}
-            onUpgradeToVoice={() => setSelectedMode("voice")}
-            onUpgradeToVideo={() => setSelectedMode("video")}
+            onUpgradeToVoice={handleUpgradeToVoice}
+            onUpgradeToVideo={handleUpgradeToVideo}
+            roomId={matchResult.roomId}
+            myUserId={matchResult.myId}
+            peerId={matchResult.peerId}
           />
         );
     }
   }
 
-  // Finding screen
+  // Finding screen - shows ONLY while searching, not auto-matching
   if (appState === "finding" && selectedMode) {
-    return <FindingScreen mode={selectedMode} onCancel={handleCancel} />;
+    return <FindingScreen mode={selectedMode} onCancel={handleCancel} isSearching={isSearching} />;
   }
 
   // Landing page
@@ -77,7 +183,7 @@ const Index = () => {
           <ModeSelection onSelectMode={handleSelectMode} />
           
           <p className="text-center text-xs text-muted-foreground/60">
-            By using Senvo, you agree to our Terms of Service
+            No signup • No login • Instant connection
           </p>
         </div>
       </GlassPanel>

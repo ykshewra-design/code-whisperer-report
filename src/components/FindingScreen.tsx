@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils";
 interface FindingScreenProps {
   mode: ChatMode;
   onCancel: () => void;
+  isSearching?: boolean;
 }
 
-const FindingScreen = ({ mode, onCancel }: FindingScreenProps) => {
+const FindingScreen = ({ mode, onCancel, isSearching = true }: FindingScreenProps) => {
   const modeConfig = {
     video: {
       icon: <Video className="w-8 h-8" />,
@@ -64,10 +65,13 @@ const FindingScreen = ({ mode, onCancel }: FindingScreenProps) => {
         {/* Status text */}
         <div className="space-y-2">
           <h2 className="text-2xl font-semibold text-foreground">
-            Finding someone...
+            {isSearching ? "Searching..." : "Connecting..."}
           </h2>
           <p className="text-muted-foreground">
             Looking for a {config.label.toLowerCase()} partner
+          </p>
+          <p className="text-sm text-muted-foreground/60">
+            Waiting for a real person to join
           </p>
         </div>
 

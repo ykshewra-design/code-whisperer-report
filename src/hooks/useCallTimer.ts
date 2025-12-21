@@ -1,45 +1,66 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface UseCallTimerReturn {
-  duration: number;
-  formatted: string;
+  seconds: number;
+  formattedTime: string;
+  isRunning: boolean;
   start: () => void;
   stop: () => void;
   reset: () => void;
 }
 
 export const useCallTimer = (): UseCallTimerReturn => {
-  const [duration, setDuration] = useState(0);
-  const [isRunning, setIsRunning] = useState(true);
+  const [seconds, setSeconds] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    if (!isRunning) return;
-
-    const interval = setInterval(() => {
-      setDuration((prev) => prev + 1);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isRunning]);
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+  const formatTime = (totalSeconds: number): string => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const start = useCallback(() => setIsRunning(true), []);
-  const stop = useCallback(() => setIsRunning(false), []);
-  const reset = useCallback(() => {
-    setDuration(0);
-    setIsRunning(true);
+  const start = useCallback(() => {
+    if (!isRunning) {
+      setIsRunning(true);
+    }
+  }, [isRunning]);
+
+  const stop = useCallback(() => {
+    setIsRunning(false);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
   }, []);
 
+  const reset = useCallback(() => {
+    stop();
+    setSeconds(0);
+  }, [stop]);
+
+  useEffect(() => {
+    if (isRunning) {
+      intervalRef.current = setInterval(() => {
+        setSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isRunning]);
+
   return {
-    duration,
-    formatted: formatTime(duration),
+    seconds,
+    formattedTime: formatTime(seconds),
+    isRunning,
     start,
     stop,
     reset,
   };
 };
+
+export default useCallTimer;

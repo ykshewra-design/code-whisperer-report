@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
+interface MediaConstraints {
+  video?: boolean;
+  audio?: boolean;
+}
+
 interface MediaDevicesState {
   hasCamera: boolean;
   hasMicrophone: boolean;
@@ -10,7 +15,7 @@ interface MediaDevicesState {
 }
 
 interface UseMediaDevicesReturn extends MediaDevicesState {
-  requestMedia: (video: boolean, audio: boolean) => Promise<MediaStream | null>;
+  requestMedia: (constraints: MediaConstraints) => Promise<boolean>;
   stopMedia: () => void;
   toggleVideo: () => void;
   toggleAudio: () => void;
@@ -49,16 +54,18 @@ export const useMediaDevices = (): UseMediaDevicesReturn => {
     checkDevices();
   }, []);
 
-  const requestMedia = useCallback(async (video: boolean, audio: boolean): Promise<MediaStream | null> => {
+  const requestMedia = useCallback(async (constraints: MediaConstraints): Promise<boolean> => {
     try {
       setState((prev) => ({ ...prev, error: null }));
 
-      const constraints: MediaStreamConstraints = {
+      const { video = false, audio = false } = constraints;
+
+      const mediaConstraints: MediaStreamConstraints = {
         video: video ? { facingMode: "user" } : false,
         audio: audio,
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
       streamRef.current = stream;
 
       setState((prev) => ({
@@ -71,7 +78,7 @@ export const useMediaDevices = (): UseMediaDevicesReturn => {
       setIsVideoEnabled(video);
       setIsAudioEnabled(audio);
 
-      return stream;
+      return true;
     } catch (err: any) {
       let errorMessage = "Failed to access media devices";
       
@@ -84,7 +91,7 @@ export const useMediaDevices = (): UseMediaDevicesReturn => {
       }
 
       setState((prev) => ({ ...prev, error: errorMessage }));
-      return null;
+      return false;
     }
   }, []);
 

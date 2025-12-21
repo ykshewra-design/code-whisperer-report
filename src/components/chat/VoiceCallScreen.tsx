@@ -143,7 +143,7 @@ const VoiceCallScreen = ({
             className={cn(
               "w-16 h-16 rounded-full flex items-center justify-center transition-all",
               !isSpeakerOn
-                ? "bg-warning text-warning-foreground"
+                ? "bg-amber-500 text-white"
                 : "bg-secondary hover:bg-secondary/80 text-foreground"
             )}
           >
